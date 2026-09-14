@@ -43,6 +43,7 @@ jobs:
           echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
           echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> $GITHUB_ENV
           echo "ANDROID_NDK=$ANDROID_HOME/ndk/26.1.10909125" >> $GITHUB_ENV
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/26.1.10909125" >> $GITHUB_ENV
 
       - name: Build
         working-directory: src/android
@@ -50,6 +51,12 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleMainlineRelease --no-daemon \
             -Pcmake.args="-DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DENABLE_QT=OFF -DENABLE_SDL2=OFF -DENABLE_WEB_SERVICE=OFF -DENABLE_OPENSSL=OFF -DCITRON_USE_BUNDLED_VCPKG=ON -DCITRON_USE_BUNDLED_FFMPEG=ON -DCITRON_ENABLE_LTO=OFF -DCITRON_BUILD_TYPE=Release"
+
+      - name: vcpkg logs (on failure)
+        if: failure()
+        run: |
+          find src/android/app/.cxx -name 'vcpkg-manifest-install.log' -exec tail -n 60 {} \; || true
+          find externals/vcpkg/buildtrees -name '*-err.log' -exec sh -c 'echo "== $1"; tail -n 40 "$1"' _ {} \; 2>/dev/null | tail -n 200 || true
 
       - uses: actions/upload-artifact@v4
         with:
