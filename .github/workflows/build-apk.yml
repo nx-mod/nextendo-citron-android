@@ -16,6 +16,9 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Full vcpkg history (its manifest baseline is an old commit)
+        run: git -C externals/vcpkg fetch --unshallow || git -C externals/vcpkg fetch origin
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
