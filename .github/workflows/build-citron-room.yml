@@ -1,0 +1,81 @@
+name: Build citron-room (Linux, minimal)
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    name: "citron-room (x86_64)"
+    runs-on: ubuntu-latest
+    container: ubuntu:26.04
+    timeout-minutes: 60
+    steps:
+      - name: Install git (needed before checkout)
+        run: |
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update
+          apt-get install -y --no-install-recommends git ca-certificates
+
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Add Git Safe Directory
+        run: git config --global --add safe.directory "$PWD"
+
+      - name: Install dependencies (matches the deploy target's own package versions)
+        run: |
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get install -y --no-install-recommends \
+            build-essential gcc g++ lld cmake ninja-build nasm \
+            libboost-all-dev libssl-dev nlohmann-json3-dev \
+            libcurl4-openssl-dev libenet-dev libudev-dev pkg-config \
+            libavcodec-dev libavformat-dev libavutil-dev libswscale-dev \
+            libavfilter-dev libswresample-dev libavdevice-dev glslang-tools \
+            libx11-dev libwayland-dev liblz4-dev zlib1g-dev libzstd-dev \
+            libtool autoconf automake
+
+      - name: Build a modern libfmt from source
+        run: |
+          git clone --depth 1 --branch 11.1.4 https://github.com/fmtlib/fmt.git /tmp/fmt-src
+          cmake -S /tmp/fmt-src -B /tmp/fmt-build -GNinja \
+            -DCMAKE_BUILD_TYPE=Release -DFMT_TEST=OFF -DFMT_DOC=OFF \
+            -DCMAKE_INSTALL_PREFIX=/usr/local -DBUILD_SHARED_LIBS=OFF \
+            -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+          ninja -C /tmp/fmt-build -j$(nproc)
+          ninja -C /tmp/fmt-build install
+
+      - name: Patch for newer Boost/CMake compatibility
+        run: |
+          find . -type f \( -name '*.cpp' -o -name '*.h' \) | xargs -r sed -i 's/\bboost::asio::io_service\b/boost::asio::io_context/g'
+          find . -type f \( -name '*.cpp' -o -name '*.h' \) | xargs -r sed -i 's/\bboost::asio::io_service::strand\b/boost::asio::strand<boost::asio::io_context::executor_type>/g'
+          find . -type f \( -name '*.cpp' -o -name '*.h' \) | xargs -r sed -i 's|#include *<boost/process/async_pipe.hpp>|#include <boost/process/v1/async_pipe.hpp>|g'
+          find . -type f \( -name '*.cpp' -o -name '*.h' \) | xargs -r sed -i 's/\bboost::process::async_pipe\b/boost::process::v1::async_pipe/g'
+          sed -i '/sse2neon/d' ./src/video_core/CMakeLists.txt
+          sed -i 's/cmake_minimum_required(VERSION 2.8)/cmake_minimum_required(VERSION 3.5)/' externals/xbyak/CMakeLists.txt
+
+      - name: Configure (room server only, no GUI/tests)
+        run: |
+          mkdir build && cd build
+          cmake .. -GNinja \
+            -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ \
+            -DENABLE_QT=OFF -DENABLE_SDL2=OFF \
+            -DCITRON_TESTS=OFF -DCITRON_CHECK_SUBMODULES=OFF \
+            -DCITRON_ENABLE_LTO=OFF \
+            -DENABLE_WEB_SERVICE=ON -DENABLE_OPENSSL=ON \
+            -DCMAKE_CXX_FLAGS="-Wno-error -w" -DCMAKE_C_FLAGS="-Wno-error -w" \
+            -DCMAKE_BUILD_TYPE=Release -DCITRON_BUILD_TYPE=Release \
+            -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+
+      - name: Build citron-room
+        run: |
+          ulimit -s unlimited
+          cd build && ninja -j$(nproc) citron-room
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: citron-room-linux-x86_64
+          path: build/bin/citron-room
+          if-no-files-found: error
