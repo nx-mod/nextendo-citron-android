@@ -123,3 +123,7 @@ exactly as with upstream Citron. "Nintendo Switch" and all game titles are trade
 respective owners.
 
 Nextendo Network is a community-run service, independent of this fork and of Nintendo.
+
+## Credits
+
+Built by nx-mod for the **Nextendo Network**, on the work of the Nextendo Network team — https://nextendo.network. Nextendo is awesome.
